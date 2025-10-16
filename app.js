@@ -178,6 +178,13 @@ const translations = {
     messagesLoadFailed: "Messages could not be loaded.",
     messageNotSent: "Message could not be sent.",
     chatsLoadFailed: "Chats could not be loaded."
+    chatsLoadFailed: "Chats could not be loaded.",
+    chatCreationFailed: "Chat creation failed",
+    imageUploadFailed: "Image upload failed",
+    loadingFailed: "Loading failed",
+    deletionFailed: "Deletion failed"
+
+    
   },
   de: {
     // Auth View
@@ -309,7 +316,7 @@ const translations = {
     emailAlreadyInUse: "Diese E-Mail ist bereits registriert.",
     credentialInUse: "Diese Zugangsdaten sind bereits in Verwendung.",
     invalidEmail: "E-Mail-Adresse ist ungültig.",
-    
+    compareFingerprintsText: "Vergleichen Sie diese Fingerabdrücke mit Ihrem Partner über einen sicheren Kanal (z.B. persönlich, Telefon). Wenn sie exakt übereinstimmen, ist die Verbindung sicher.",
     chatInfoTitle: "Chat mit {username}",
     security: "Sicherheit",
     yourFingerprint: "Ihr Fingerabdruck:",
@@ -319,7 +326,11 @@ const translations = {
     compareFingerprintsText: "Vergleichen Sie diese Fingerabdrücke mit Ihrem Partner über einen sicheren Kanal (z.B. persönlich, Telefon). Wenn sie exakt übereinstimmen, ist die Verbindung sicher.",
     
     createBackupNow: "Erstellen Sie jetzt ein Backup Ihrer Schlüssel!",
-    
+    chatsLoadFailed: "Chats konnten nicht geladen werden.",
+    chatCreationFailed: "Chat-Erstellung fehlgeschlagen",
+    imageUploadFailed: "Bild-Upload fehlgeschlagen",
+    loadingFailed: "Laden fehlgeschlagen",
+    deletionFailed: "Löschen fehlgeschlagen"
     connectionError: "Verbindungsfehler",
     couldNotConnect: "Konnte keine Verbindung herstellen.",
     criticalError: "Kritischer Fehler:",
