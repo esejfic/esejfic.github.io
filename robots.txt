@@ -1,0 +1,21 @@
+User-agent: *
+Allow: /
+
+# Sitemaps
+Sitemap: https://esejfic.github.io/sitemap.xml
+
+# Crawl-delay
+Crawl-delay: 1
+
+# Disallow admin/config files
+Disallow: /config/
+Disallow: /.git/
+Disallow: /node_modules/
+
+# Allow important files
+Allow: /manifest.webmanifest
+Allow: /app.js
+Allow: /icons/
+
+# Host
+Host: https://esejfic.github.io
