@@ -1446,26 +1446,30 @@ const uiModule = {
     }
   },
 
-  async renderMessage(msgId, message, msgData, isSender, position = 'prepend') {
-    const wrapper = document.createElement('div');
-    wrapper.id = `msg-${msgId}`;
-    wrapper.className = `w-full flex mb-3 ${isSender ? 'justify-end' : 'justify-start'}`;
-    
-    const contentWrapper = document.createElement('div');
-    contentWrapper.className = 'flex flex-col max-w-[70%]';
-    
-    const bubble = document.createElement('div');
-    bubble.className = 'message-bubble p-3 rounded-lg break-words';
-    
-    if (message.type === 'deleted' || message.type === 'error') {
-      bubble.classList.add('bg-gray-800');
-      const p = document.createElement('p');
-      p.className = 'text-gray-400 italic text-sm';
-      p.textContent = message.content || t('messageDeleted');
-      bubble.appendChild(p);
-    } else {
-      bubble.classList.add(isSender ? 'bg-blue-600' : 'bg-gray-700');
-    }
+ async renderMessage(msgId, message, msgData, isSender, position = 'prepend') {
+  const wrapper = document.createElement('div');
+  wrapper.id = `msg-${msgId}`;
+  wrapper.className = `w-full flex mb-3 ${isSender ? 'justify-end' : 'justify-start'}`;
+
+  const contentWrapper = document.createElement('div');
+  contentWrapper.className = 'flex flex-col max-w-[70%]';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'message-bubble p-3 rounded-lg break-words';
+  bubble.style.minWidth = '120px';          // <-- Fix: Mindestbreite
+  bubble.style.maxWidth = '70%';
+  bubble.style.wordBreak = 'break-word';
+  bubble.style.whiteSpace = 'pre-wrap';
+
+  if (message.type === 'deleted' || message.type === 'error') {
+    bubble.classList.add('bg-gray-800');
+    const p = document.createElement('p');
+    p.className = 'text-gray-400 italic text-sm';
+    p.textContent = message.content || t('messageDeleted');
+    bubble.appendChild(p);
+  } else {
+    bubble.classList.add(isSender ? 'bg-blue-600' : 'bg-gray-700');
+  }
     
     if (message.type === 'text') {
       const p = document.createElement('p');
