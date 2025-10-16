@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
   <!-- SEO Meta Tags -->
-  <title>Secure Messenger - Kostenloser verschlüsselter Chat | Ende-zu-Ende Verschlüsselung</title>
-  <meta name="description" content="Kostenlose sichere Messaging-App mit Ende-zu-Ende-Verschlüsselung. Private, schnelle PWA Messenger App. Keine Telefonnummer erforderlich. Jetzt gratis herunterladen.">
-  <meta name="keywords" content="sicherer messenger, verschlüsselter chat, private nachrichten, PWA messenger, Ende-zu-Ende-Verschlüsselung, kostenlose chat app, sichere kommunikation, encrypted messenger, secure chat">
+  <title>E-Chat - Kostenloser verschlüsselter Chat | Ende-zu-Ende Verschlüsselung</title>
+  <meta name="description" content="E-Chat - Kostenlose sichere Messaging-App mit Ende-zu-Ende-Verschlüsselung. Private, schnelle PWA Messenger App. Keine Telefonnummer erforderlich. Jetzt gratis herunterladen.">
+  <meta name="keywords" content="E-Chat, sicherer messenger, verschlüsselter chat, private nachrichten, PWA messenger, Ende-zu-Ende-Verschlüsselung, kostenlose chat app, sichere kommunikation, encrypted messenger, secure chat">
   <meta name="author" content="esejfic">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://esejfic.github.io/">
@@ -15,15 +15,15 @@
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://esejfic.github.io/">
-  <meta property="og:title" content="Secure Messenger - Kostenloser verschlüsselter Chat">
-  <meta property="og:description" content="Private Messaging-App mit Ende-zu-Ende-Verschlüsselung. Deine Gespräche bleiben sicher und privat.">
+  <meta property="og:title" content="E-Chat - Kostenloser verschlüsselter Messenger">
+  <meta property="og:description" content="E-Chat - Private Messaging-App mit Ende-zu-Ende-Verschlüsselung. Deine Gespräche bleiben sicher und privat.">
   <meta property="og:image" content="https://esejfic.github.io/og-image.png">
   
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:url" content="https://esejfic.github.io/">
-  <meta name="twitter:title" content="Secure Messenger - Verschlüsselter Chat">
-  <meta name="twitter:description" content="Private Messaging mit Ende-zu-Ende-Verschlüsselung">
+  <meta name="twitter:title" content="E-Chat - Verschlüsselter Messenger">
+  <meta name="twitter:description" content="E-Chat - Private Messaging mit Ende-zu-Ende-Verschlüsselung">
   <meta name="twitter:image" content="https://esejfic.github.io/og-image.png">
 
   <!-- CSP MUSS auf EINER Zeile sein -->
@@ -38,7 +38,7 @@
   {
     "@context": "https://schema.org",
     "@type": "WebApplication",
-    "name": "Secure Messenger",
+    "name": "E-Chat - Secure Messenger",
     "description": "Kostenlose Ende-zu-Ende verschlüsselte Messaging-App",
     "url": "https://esejfic.github.io/",
     "applicationCategory": "CommunicationApplication",
@@ -53,7 +53,25 @@
   </script>
 
   <style>
-    html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+    html, body { 
+      height: 100%; 
+      margin: 0; 
+      padding: 0; 
+    }
+    
+    /* Scroll für Landing Page aktivieren */
+    #landing-page {
+      height: auto;
+      min-height: 100vh;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    
+    /* Auth und App View ohne Scroll */
+    #auth-view, #app-view {
+      overflow: hidden;
+    }
+    
     .blinking-dot {
       width: 8px; height: 8px; background-color: #10b981;
       border-radius: 50%; display: inline-block;
@@ -85,6 +103,30 @@
       transform: translateY(-8px);
       box-shadow: 0 20px 40px rgba(59, 130, 246, 0.3);
     }
+    
+    /* Logo Styling */
+    .brand-logo {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .brand-title {
+      font-size: 1.75rem;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.2;
+    }
+    .brand-subtitle {
+      font-size: 0.75rem;
+      color: #9ca3af;
+      font-weight: 500;
+      margin-top: -2px;
+    }
+    
     #landing-page { display: block; }
     #auth-view, #app-view { display: none; }
   </style>
@@ -99,14 +141,15 @@
   </noscript>
 
   <!-- ========================================================================= -->
-  <!-- LANDING PAGE (NEW!) -->
+  <!-- LANDING PAGE (SCROLLABLE) -->
   <!-- ========================================================================= -->
-  <div id="landing-page" class="gradient-bg min-h-screen">
+  <div id="landing-page" class="gradient-bg">
     <!-- Navigation -->
-    <nav class="p-6 flex justify-between items-center backdrop-blur-sm bg-gray-900/20">
-      <h1 class="text-2xl md:text-3xl font-bold text-white flex items-center gap-2">
-        🔒 Secure Messenger
-      </h1>
+    <nav class="p-6 flex justify-between items-center backdrop-blur-sm bg-gray-900/20 sticky top-0 z-50">
+      <div class="brand-logo">
+        <div class="brand-title">🔒 E-Chat</div>
+        <div class="brand-subtitle">Sicherer Messenger</div>
+      </div>
       <button id="nav-get-started" class="px-4 md:px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition shadow-lg hover:shadow-xl">
         Jetzt starten
       </button>
@@ -209,7 +252,7 @@
 
     <!-- Footer -->
     <footer class="container mx-auto px-6 py-8 text-center text-gray-400">
-      <p>&copy; 2025 Secure Messenger. Alle Rechte vorbehalten.</p>
+      <p>&copy; 2025 E-Chat - Secure Messenger. Alle Rechte vorbehalten.</p>
       <p class="mt-2 text-sm">
         Made with ❤️ for privacy | 
         <a href="https://github.com/esejfic" class="text-blue-400 hover:text-blue-300" target="_blank">GitHub</a>
@@ -253,8 +296,11 @@
     <div class="w-full max-w-md bg-gray-800 rounded-lg shadow-xl p-8">
       <div class="text-center mb-4">
         <div class="text-5xl mb-3">🔒</div>
-        <h1 class="text-4xl font-bold text-white mb-2">Secure Messenger</h1>
-        <p class="text-gray-400 mb-6">End-to-end encrypted</p>
+        <div class="brand-logo items-center mb-2">
+          <div class="brand-title text-center" style="font-size: 2.5rem;">E-Chat</div>
+          <div class="brand-subtitle text-center" style="font-size: 0.9rem; margin-top: 4px;">Sicherer Messenger</div>
+        </div>
+        <p class="text-gray-400 mb-6 mt-4">End-to-end encrypted</p>
       </div>
       
       <div class="space-y-4">
@@ -415,6 +461,8 @@
     function showAuthView() {
       document.getElementById('landing-page').style.display = 'none';
       document.getElementById('auth-view').style.display = 'flex';
+      // Scroll zurück zum Top
+      window.scrollTo(0, 0);
     }
   </script>
   
