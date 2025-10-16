@@ -328,7 +328,7 @@ const translations = {
     chatCreationFailed: "Chat-Erstellung fehlgeschlagen",
     imageUploadFailed: "Bild-Upload fehlgeschlagen",
     loadingFailed: "Laden fehlgeschlagen",
-    deletionFailed: "Löschen fehlgeschlagen"
+    deletionFailed: "Löschen fehlgeschlagen",
     connectionError: "Verbindungsfehler",
     couldNotConnect: "Konnte keine Verbindung herstellen.",
     criticalError: "Kritischer Fehler:",
