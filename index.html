@@ -1,20 +1,87 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Website Title</title>
+    <meta name="description" content="E-Chat - Sicherer und kostenloser Chat Dienst">
+    <meta property="og:title" content="E-Chat">
+    <meta property="og:description" content="E-Chat - Sicherer und kostenloser Chat Dienst">
+    <meta property="og:image" content="path/to/image.png">
+    <meta property="og:url" content="https://esejfic.github.io/">
     <link rel="stylesheet" href="styles.css">
-    <!-- Other SEO tags -->
+    <title>E-Chat</title>
 </head>
 <body>
-    <!-- Landing Page Content -->
-    <button onclick="showAuthViewFromLanding()">Login</button>
-    <script>
-        window.__LANDING_PAGE_ACTIVE__ = true;
-        // Other landing page logic
-    </script>
-    <script src="landing-page-logic.js"></script>
-    <script type="module" src="app.js"></script>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="#">Home</a></li>
+                <li><a href="#">Features</a></li>
+                <li><a href="#">About</a></li>
+                <li><a href="#">Contact</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section class="hero">
+            <h1>Willkommen bei E-Chat</h1>
+            <p>Der sicherste und schnellste Chatdienst</p>
+        </section>
+        <section class="feature-cards">
+            <div class="card">
+                <h2>Ende-zu-Ende verschlüsselt</h2>
+                <p>Schützen Sie Ihre Privatsphäre.</p>
+            </div>
+            <div class="card">
+                <h2>Progressive Web App</h2>
+                <p>Kein Download nötig, direkt im Browser.</p>
+            </div>
+            <div class="card">
+                <h2>Komplett kostenlos</h2>
+                <p>Keine versteckten Kosten.</p>
+            </div>
+            <div class="card">
+                <h2>Blitzschnell</h2>
+                <p>Erleben Sie eine schnelle Verbindung.</p>
+            </div>
+            <div class="card">
+                <h2>Keine Telefonnummer</h2>
+                <p>Chatten Sie anonym.</p>
+            </div>
+            <div class="card">
+                <h2>Sichere Medien</h2>
+                <p>Teilen Sie Dateien sicher.</p>
+            </div>
+        </section>
+        <section class="cta">
+            <h2>Jetzt starten!</h2>
+            <button>Registrieren</button>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 E-Chat. Alle Rechte vorbehalten.</p>
+    </footer>
+    <div class="security-banner">
+        <p>Ihre Sicherheit ist uns wichtig!</p>
+    </div>
+    <div class="loading-overlay">
+        <p>Laden...</p>
+    </div>
+    <div class="modal-dialog">
+        <h2>Willkommen zurück!</h2>
+        <p>Bitte melden Sie sich an.</p>
+    </div>
+    <div class="auth-view">
+        <p>Authentifizieren Sie sich bitte.</p>
+    </div>
+    <div class="app-view">
+        <aside class="sidebar">
+            <h3>Sidebar</h3>
+        </aside>
+        <div class="chat-window">
+            <h3>Chat</h3>
+        </div>
+    </div>
+    <script src="scripts.js"></script>
 </body>
 </html>
