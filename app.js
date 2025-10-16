@@ -1726,7 +1726,7 @@ async function handleDeleteMessage(msgId) {
     await firestoreModule.updateMessage(activeChat.chatId, msgId, encrypted);
   } catch (e) {
     console.error("Delete failed:", e);
-    modal.alert(t('error'), "Deletion failed");
+    modal.alert(t('error'), t('deletionFailed'));
   }
 }
 
@@ -1771,7 +1771,7 @@ async function handleImageSend(event) {
     rateLimiter.record();
   } catch (err) {
     console.error(err);
-    modal.alert(t('error'), "Image upload failed");
+    modal.alert(t('error'), t('imageUploadFailed'));
   } finally {
     hideLoading();
   }
@@ -1819,7 +1819,7 @@ async function handleAddNewChat() {
   } catch (error) {
     console.error("Error adding chat:", error);
     hideLoading();
-    modal.alert(t('error'), "Chat creation failed");
+    modal.alert(t('error'), t('chatCreationFailed'));
   }
 }
 
@@ -1853,7 +1853,7 @@ async function handleLoadOlderMessages() {
     }
   } catch (e) {
     console.error("Load older failed:", e);
-    modal.alert(t('error'), "Loading failed");
+    modal.alert(t('error'), t('loadingFailed'));
   } finally {
     loadOlderBtn.disabled = false;
     loadOlderBtn.textContent = t('loadOlder');
