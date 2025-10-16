@@ -1301,16 +1301,14 @@ async function uploadEncryptedMedia(chatId, file) {
 // =============================================================================
 const uiModule = {
   switchToAppView() {
-    authView.classList.add('hidden');
-    appView.classList.remove('hidden');
-    appView.classList.add('flex');
+    authView.style.display = 'none';
+    appView.style.display = 'flex';
   },
 
   switchToAuthView() {
     hideLoading();
-    appView.classList.add('hidden');
-    authView.classList.remove('hidden');
-    authView.classList.add('flex');
+    appView.style.display = 'none';
+    authView.style.display = 'flex';
   },
 
   updateUserProfile(username, userId) {
@@ -2176,8 +2174,8 @@ async function startApp() {
         if (privateKey) {
           await handleLogin(user);
         } else {
-          authView.classList.remove('hidden');
-          appView.classList.add('hidden');
+          authView.style.display = 'flex';
+          appView.style.display = 'none';
           hideLoading();
         }
       } else {

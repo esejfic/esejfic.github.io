@@ -423,18 +423,22 @@
     // Landing Page Navigation Fix
     function initializeViews() {
       const hasSeenLanding = sessionStorage.getItem('hasSeenLanding');
+      const landingPage = document.getElementById('landing-page');
       
       if (hasSeenLanding) {
-        document.getElementById('landing-page').style.display = 'none';
+        landingPage.style.display = 'none';
       } else {
-        document.getElementById('landing-page').style.display = 'block';
+        landingPage.style.display = 'block';
       }
     }
     
     function showAuthView() {
       sessionStorage.setItem('hasSeenLanding', 'true');
-      document.getElementById('landing-page').style.display = 'none';
-      document.getElementById('auth-view').style.display = 'flex';
+      const landingPage = document.getElementById('landing-page');
+      const authView = document.getElementById('auth-view');
+      
+      landingPage.style.display = 'none';
+      authView.style.display = 'flex';
       window.scrollTo(0, 0);
     }
     
