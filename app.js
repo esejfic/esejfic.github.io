@@ -417,6 +417,8 @@ function updateAllText() {
 }
 
 // DOM Elements
+const landingPage = document.getElementById('landing-page');
+const appContainer = document.getElementById('app-container');
 const banner = document.getElementById('security-banner');
 const bannerMessage = document.getElementById('banner-message');
 const bannerClose = document.getElementById('banner-close');
@@ -1292,12 +1294,19 @@ async function uploadEncryptedMedia(chatId, file) {
 // =============================================================================
 const uiModule = {
   switchToAppView() {
+    try {
+      sessionStorage.setItem('appRequested', 'true');
+    } catch {}
+    if (appContainer) appContainer.style.display = 'block';
+    if (landingPage) landingPage.style.display = 'none';
     authView.style.display = 'none';
     appView.style.display = 'flex';
   },
 
   switchToAuthView() {
     hideLoading();
+    if (appContainer) appContainer.style.display = 'block';
+    if (landingPage) landingPage.style.display = 'none';
     appView.style.display = 'none';
     authView.style.display = 'flex';
   },
@@ -2165,11 +2174,32 @@ async function startApp() {
       if (user) {
         currentUser = user;
         let privateKey = await idb.getKey(user.uid);
-        
+
         if (privateKey) {
+          try {
+            sessionStorage.setItem('appRequested', 'true');
+          } catch {}
+          if (landingPage) landingPage.style.display = 'none';
+          if (appContainer) appContainer.style.display = 'block';
           await handleLogin(user);
         } else {
-          authView.style.display = 'flex';
+          const appRequested = (() => {
+            try {
+              return sessionStorage.getItem('appRequested') === 'true';
+            } catch {
+              return false;
+            }
+          })();
+
+          if (appRequested) {
+            if (appContainer) appContainer.style.display = 'block';
+            if (landingPage) landingPage.style.display = 'none';
+            authView.style.display = 'flex';
+          } else {
+            if (landingPage) landingPage.style.display = 'block';
+            if (appContainer) appContainer.style.display = 'none';
+            authView.style.display = 'none';
+          }
           appView.style.display = 'none';
           hideLoading();
         }
