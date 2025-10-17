@@ -21,7 +21,7 @@ import {
 import {
   getFirestore, setDoc, getDoc, doc, collection, onSnapshot, addDoc,
   serverTimestamp, query, orderBy, runTransaction, writeBatch, updateDoc,
-  getDocs, startAfter, limit
+  getDocs, startAfter, limit, where
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import {
   getStorage, ref as sRef, uploadBytes, getDownloadURL
@@ -457,6 +457,7 @@ let userKeys = null;
 let activeChat = null;
 let sharedSecrets = {};
 let sessionKeys = {};
+const userDataCache = new Map();
 let chatUnsubscribes = {};
 let typingTimeout = null;
 
@@ -1125,10 +1126,59 @@ const firestoreModule = {
   },
 
   listenToChats(userId, callback) {
-    const qy = query(collection(db, `artifacts/${appId}/users/${userId}/chats`));
+    const chatsRef = collection(db, `artifacts/${appId}/public/data/chats`);
+    const qy = query(chatsRef, where('participants', 'array-contains', userId));
     return onSnapshot(
       qy,
-      snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      (snap) => {
+        Promise.all(
+          snap.docs.map(async (d) => {
+            const data = d.data();
+            const participants = Array.isArray(data.participants) ? data.participants : [];
+            const partnerId = participants.find(pid => pid !== userId);
+            if (!partnerId) return null;
+
+            let partnerUsername = data.participantUsernames?.[partnerId];
+            if (!partnerUsername) {
+              let cached = userDataCache.get(partnerId);
+              if (!cached) {
+                cached = await firestoreModule.getUserData(partnerId);
+                if (cached) {
+                  userDataCache.set(partnerId, cached);
+                }
+              }
+              partnerUsername = cached?.username || '';
+            }
+            if (partnerUsername) {
+              const cached = userDataCache.get(partnerId) || {};
+              if (cached.username !== partnerUsername) {
+                userDataCache.set(partnerId, { ...cached, username: partnerUsername });
+              }
+            }
+
+            return {
+              id: partnerId,
+              partnerId,
+              partnerUsername: partnerUsername || 'Unknown',
+              chatMetaId: d.id,
+              ...data
+            };
+          })
+        ).then((resolved) => {
+          const chats = resolved.filter(Boolean);
+          const ts = (chat) => {
+            const timestamp = chat.updatedAt || chat.lastMessageAt || chat.createdAt;
+            if (timestamp?.seconds) return timestamp.seconds;
+            if (timestamp?.toDate) return timestamp.toDate().getTime() / 1000;
+            return 0;
+          };
+          chats.sort((a, b) => ts(b) - ts(a));
+          callback(chats);
+        }).catch((err) => {
+          console.error('Error resolving chats:', err);
+          modal.alert(t('error'), t('chatsLoadFailed'));
+        });
+      },
       error => {
         console.error("Error listening to chats:", error);
         modal.alert(t('error'), t('chatsLoadFailed'));
@@ -1136,13 +1186,31 @@ const firestoreModule = {
     );
   },
 
-  async ensureChatMeta(chatId, participants) {
+  async ensureChatMeta(chatId, participants, participantUsernames) {
     try {
       const chatDocRef = doc(db, `artifacts/${appId}/public/data/chats`, chatId);
-      const exists = await getDoc(chatDocRef);
-      if (!exists.exists()) {
-        await setDoc(chatDocRef, { participants, createdAt: serverTimestamp() }, { merge: true });
+      const existing = await getDoc(chatDocRef);
+      const uniqueParticipants = Array.from(new Set((participants || []).filter(Boolean)));
+      if (!uniqueParticipants.length) return;
+      const payload = {
+        participants: uniqueParticipants
+      };
+      if (participantUsernames && Object.keys(participantUsernames).length) {
+        const filtered = {};
+        uniqueParticipants.forEach(id => {
+          const value = participantUsernames[id];
+          if (typeof value === 'string' && value.trim()) {
+            filtered[id] = value.trim();
+          }
+        });
+        if (Object.keys(filtered).length) {
+          payload.participantUsernames = filtered;
+        }
       }
+      if (!existing.exists()) {
+        payload.createdAt = serverTimestamp();
+      }
+      await setDoc(chatDocRef, payload, { merge: true });
     } catch (e) {
       console.error("Error ensuring chat meta:", e);
     }
@@ -1370,9 +1438,21 @@ const uiModule = {
       hideLoading();
       return;
     }
-    
-    await firestoreModule.ensureChatMeta(chatId, [auth.currentUser?.uid, chat.partnerId]);
-    
+    userDataCache.set(chat.partnerId, partnerData);
+
+    const resolvedPartnerUsername = partnerData.username || chat.partnerUsername || 'Unknown';
+    const participantUsernames = { [chat.partnerId]: resolvedPartnerUsername };
+    if (auth.currentUser?.uid && currentUsername) {
+      participantUsernames[auth.currentUser.uid] = currentUsername;
+    }
+    const participants = [auth.currentUser?.uid, chat.partnerId].filter(Boolean);
+    await firestoreModule.ensureChatMeta(
+      chatId,
+      participants,
+      participantUsernames
+    );
+    activeChat.partnerUsername = resolvedPartnerUsername;
+
     sharedSecrets[chat.partnerId] = await cryptoModule.deriveSharedSecret(
       userKeys.keyPair.privateKey,
       partnerData.publicKey,
@@ -1394,7 +1474,7 @@ const uiModule = {
     welcomeScreen.classList.add('hidden');
     chatWindow.classList.remove('hidden');
     chatWindow.classList.add('flex');
-    chatHeaderName.textContent = chat.partnerUsername || '';
+    chatHeaderName.textContent = resolvedPartnerUsername || '';
     
     chatUnsubscribes['typing'] = firestoreModule.listenToTypingStatus(chatId, (docSnap) => {
       const d = docSnap?.exists() ? docSnap.data() : null;
@@ -1672,7 +1752,8 @@ async function handleLogout() {
   sessionKeys = {};
   userKeys = null;
   currentUsername = null;
-  
+  userDataCache.clear();
+
   if (auth.currentUser) {
     localStorage.removeItem(`username_${auth.currentUser.uid}`);
   }
@@ -1792,40 +1873,48 @@ async function handleAddNewChat() {
     if (!auth.currentUser || !currentUsername) {
       return modal.alert(t('error'), t('userDataNotLoaded'));
     }
-    
+
     const partnerUsername = await modal.prompt(
       t('newChatTitle'),
       t('newChatText'),
       "username"
     );
-    
+
     if (!partnerUsername || partnerUsername.trim() === '') return;
-    
+
     const sanitized = sanitizeUsername(partnerUsername);
+    if (!sanitized || sanitized.length < 3) {
+      return modal.alert(t('invalid'), t('usernameInvalid'));
+    }
     if (sanitized.toLowerCase() === currentUsername.toLowerCase()) {
       return modal.alert(t('invalid'), t('cannotChatYourself'));
     }
 
     showLoading(t('searchingUser'));
     const partner = await firestoreModule.findUserByUsername(sanitized);
-    
+
     if (!partner) {
       hideLoading();
       return modal.alert(t('notFound'), t('userNotFound'));
     }
 
     const partnerId = partner.id;
-    const userChatRef = doc(db, `artifacts/${appId}/users/${auth.currentUser.uid}/chats`, partnerId);
-    const partnerChatRef = doc(db, `artifacts/${appId}/users/${partnerId}/chats`, auth.currentUser.uid);
-    
-    await setDoc(userChatRef, { partnerUsername: partner.username });
-    await setDoc(partnerChatRef, { partnerUsername: currentUsername });
-
+    if (partner.username) {
+      userDataCache.set(partnerId, partner);
+    }
     const chatId = [auth.currentUser.uid, partnerId].sort().join('_');
-    await firestoreModule.ensureChatMeta(chatId, [auth.currentUser.uid, partnerId]);
+    const participantUsernames = {
+      [auth.currentUser.uid]: currentUsername,
+      [partnerId]: partner.username || sanitized
+    };
+    await firestoreModule.ensureChatMeta(
+      chatId,
+      [auth.currentUser.uid, partnerId],
+      participantUsernames
+    );
 
     hideLoading();
-    uiModule.openChat({ partnerId, partnerUsername: partner.username });
+    uiModule.openChat({ partnerId, partnerUsername: partner.username || sanitized });
   } catch (error) {
     console.error("Error adding chat:", error);
     hideLoading();
