@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /artifacts/{appId} {
+      match /public/data/users/{userId} {
+        // Jeder darf Profile lesen
+        allow read: if true;
+
+        // Erstellen/Aktualisieren NUR vom Besitzer + strikte Feld-Whitelist
+        allow create, update: if request.auth != null
+          && request.auth.uid == userId
+          && (request.resource.data is map)
+          && request.resource.data.keys().hasOnly([
+               // Basis-Profil
+               'displayName','photoURL','about',
+               // Ident/Meta
+               'email','username','language','publicKey','lastLogin',
+               // Timestamps
+               'createdAt','updatedAt'
+             ])
+          // Typ-Checks
+          && (!('displayName' in request.resource.data) || (request.resource.data.displayName is string))
+          && (!('photoURL'    in request.resource.data) || (request.resource.data.photoURL is string))
+          && (!('about'       in request.resource.data) || (request.resource.data.about is string))
+          && (!('email'       in request.resource.data) || (request.resource.data.email is string))
+          && (!('username'    in request.resource.data) || (request.resource.data.username is string))
+          && (!('language'    in request.resource.data) || (request.resource.data.language is string))
+          && (!('publicKey'   in request.resource.data) || (request.resource.data.publicKey is string))
+          && (!('lastLogin'   in request.resource.data) || (request.resource.data.lastLogin is timestamp))
+          && (!('createdAt'   in request.resource.data) || (request.resource.data.createdAt is timestamp))
+          && (!('updatedAt'   in request.resource.data) || (request.resource.data.updatedAt is timestamp));
+
+        // Löschen nur vom Besitzer
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+  }
+}
