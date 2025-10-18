@@ -19,12 +19,12 @@ import {
   EmailAuthProvider, linkWithCredential, sendEmailVerification
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import {
-  getFirestore, setDoc, getDoc, doc, collection, onSnapshot, addDoc,
+  getFirestore, setDoc, getDoc, doc, collection, onSnapshot,
   serverTimestamp, query, orderBy, runTransaction, writeBatch, updateDoc,
   getDocs, startAfter, limit, where
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import {
-  getStorage, ref as sRef, uploadBytes, getDownloadURL
+  getStorage, ref, uploadBytes, getDownloadURL
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
 // =============================================================================
@@ -467,6 +467,92 @@ let userSettings = {
   typingIndicators: true
 };
 
+// =============================================================================
+// CHAT DATA HELPERS
+// =============================================================================
+async function createOrJoinChat(myUid, partnerUid, chatId) {
+  const chatRef = doc(db, 'artifacts', appId, 'public', 'data', 'chats', chatId);
+
+  await setDoc(chatRef, {
+    members: { [myUid]: true, [partnerUid]: true },
+    owner: myUid,
+    createdAt: serverTimestamp()
+  }, { merge: true });
+
+  const myListRef = doc(db, 'artifacts', appId, 'users', myUid, 'chats', chatId);
+  await setDoc(myListRef, { createdAt: serverTimestamp() }, { merge: true });
+
+  return chatRef;
+}
+
+async function fetchMyChats(myUid) {
+  const chatsCol = collection(db, 'artifacts', appId, 'public', 'data', 'chats');
+  const q = query(chatsCol, where(`members.${myUid}`, '==', true), orderBy('createdAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function loadMessages(chatId, onError) {
+  try {
+    const msgsCol = collection(db, 'artifacts', appId, 'public', 'data', 'chats', chatId, 'messages');
+    const q = query(msgsCol, orderBy('createdAt', 'asc'), limit(50));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    if (e?.code === 'permission-denied') {
+      onError?.('Du bist kein Mitglied dieses Chats.');
+    } else {
+      onError?.('Nachrichten konnten nicht geladen werden.');
+    }
+    return [];
+  }
+}
+
+async function sendMessageWithOptionalMedia({
+  db: database,
+  storage: storageInstance,
+  chatId,
+  senderId,
+  ciphertext,
+  nonce,
+  version,
+  file
+}) {
+  const messageId = crypto.randomUUID();
+  let media;
+
+  if (file) {
+    const storagePath = `chatMedia/${chatId}/${messageId}/${file.name}`;
+    const storageRef = ref(storageInstance, storagePath);
+    await uploadBytes(storageRef, file, { contentType: file.type }); // contentType wichtig
+    media = { path: storagePath, size: file.size, contentType: file.type };
+  }
+
+  const msgRef = doc(
+    collection(database, 'artifacts', appId, 'public', 'data', 'chats', chatId, 'messages'),
+    messageId
+  );
+
+  await setDoc(msgRef, {
+    senderId,
+    ciphertext,
+    nonce,
+    version,
+    createdAt: serverTimestamp(),
+    ...(media ? { media } : {})
+  });
+
+  return messageId;
+}
+
+function ensureChatSelectedOrEmptyState(currentChatId, showEmpty) {
+  if (!currentChatId) {
+    showEmpty?.('Kein Chat ausgewählt. Erstelle einen neuen Chat oder wähle einen bestehenden.');
+    return false;
+  }
+  return true;
+}
+
 // Rate Limiting
 const rateLimiter = {
   messages: [],
@@ -481,6 +567,7 @@ const rateLimiter = {
 
 // Pagination
 const pageSize = 30;
+const initialMessageLimit = 50;
 const lastDocByChat = {};
 const loadedAllByChat = {};
 
@@ -825,18 +912,34 @@ const cryptoModule = {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const encoded = new TextEncoder().encode(JSON.stringify(data));
     const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoded);
-    const full = new Uint8Array(iv.length + ct.byteLength);
-    full.set(iv);
-    full.set(new Uint8Array(ct), iv.length);
-    return arrayBufferToBase64(full);
+    return {
+      ciphertext: arrayBufferToBase64(new Uint8Array(ct)),
+      nonce: arrayBufferToBase64(iv),
+      version: 'v1'
+    };
   },
 
-  async decrypt(key, encB64) {
+  async decrypt(key, encryptedPayload) {
     try {
-      const full = base64ToArrayBuffer(encB64);
-      const iv = full.slice(0, 12);
-      const ct = full.slice(12);
-      const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
+      if (!encryptedPayload) throw new Error('Missing payload');
+
+      let iv;
+      let ciphertextBytes;
+
+      if (typeof encryptedPayload === 'string') {
+        const full = new Uint8Array(base64ToArrayBuffer(encryptedPayload));
+        iv = full.slice(0, 12);
+        ciphertextBytes = full.slice(12);
+      } else {
+        const { ciphertext, nonce } = encryptedPayload || {};
+        if (!ciphertext || !nonce) {
+          throw new Error('Invalid payload');
+        }
+        iv = new Uint8Array(base64ToArrayBuffer(nonce));
+        ciphertextBytes = new Uint8Array(base64ToArrayBuffer(ciphertext));
+      }
+
+      const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertextBytes);
       return JSON.parse(new TextDecoder().decode(pt));
     } catch (e) {
       console.error("Decryption failed:", e);
@@ -1127,28 +1230,27 @@ const firestoreModule = {
 
   listenToChats(userId, callback) {
     const chatsRef = collection(db, `artifacts/${appId}/public/data/chats`);
-    const qy = query(chatsRef, where('participants', 'array-contains', userId));
+    const qy = query(chatsRef, where(`members.${userId}`, '==', true), orderBy('createdAt', 'desc'));
     return onSnapshot(
       qy,
-      (snap) => {
-        Promise.all(
-          snap.docs.map(async (d) => {
-            const data = d.data();
-            const participants = Array.isArray(data.participants) ? data.participants : [];
-            const partnerId = participants.find(pid => pid !== userId);
+      async () => {
+        try {
+          const chatDocs = await fetchMyChats(userId);
+          const hydrated = await Promise.all(chatDocs.map(async (chat) => {
+            const members = chat.members || {};
+            const partnerId = Object.keys(members).find(id => id !== userId && members[id]);
             if (!partnerId) return null;
 
-            let partnerUsername = data.participantUsernames?.[partnerId];
+            let partnerUsername = chat.participantUsernames?.[partnerId];
             if (!partnerUsername) {
               let cached = userDataCache.get(partnerId);
               if (!cached) {
                 cached = await firestoreModule.getUserData(partnerId);
-                if (cached) {
-                  userDataCache.set(partnerId, cached);
-                }
+                if (cached) userDataCache.set(partnerId, cached);
               }
               partnerUsername = cached?.username || '';
             }
+
             if (partnerUsername) {
               const cached = userDataCache.get(partnerId) || {};
               if (cached.username !== partnerUsername) {
@@ -1160,60 +1262,22 @@ const firestoreModule = {
               id: partnerId,
               partnerId,
               partnerUsername: partnerUsername || 'Unknown',
-              chatMetaId: d.id,
-              ...data
+              chatMetaId: chat.id,
+              ...chat
             };
-          })
-        ).then((resolved) => {
-          const chats = resolved.filter(Boolean);
-          const ts = (chat) => {
-            const timestamp = chat.updatedAt || chat.lastMessageAt || chat.createdAt;
-            if (timestamp?.seconds) return timestamp.seconds;
-            if (timestamp?.toDate) return timestamp.toDate().getTime() / 1000;
-            return 0;
-          };
-          chats.sort((a, b) => ts(b) - ts(a));
-          callback(chats);
-        }).catch((err) => {
+          }));
+
+          callback(hydrated.filter(Boolean));
+        } catch (err) {
           console.error('Error resolving chats:', err);
           modal.alert(t('error'), t('chatsLoadFailed'));
-        });
+        }
       },
       error => {
         console.error("Error listening to chats:", error);
         modal.alert(t('error'), t('chatsLoadFailed'));
       }
     );
-  },
-
-  async ensureChatMeta(chatId, participants, participantUsernames) {
-    try {
-      const chatDocRef = doc(db, `artifacts/${appId}/public/data/chats`, chatId);
-      const existing = await getDoc(chatDocRef);
-      const uniqueParticipants = Array.from(new Set((participants || []).filter(Boolean)));
-      if (!uniqueParticipants.length) return;
-      const payload = {
-        participants: uniqueParticipants
-      };
-      if (participantUsernames && Object.keys(participantUsernames).length) {
-        const filtered = {};
-        uniqueParticipants.forEach(id => {
-          const value = participantUsernames[id];
-          if (typeof value === 'string' && value.trim()) {
-            filtered[id] = value.trim();
-          }
-        });
-        if (Object.keys(filtered).length) {
-          payload.participantUsernames = filtered;
-        }
-      }
-      if (!existing.exists()) {
-        payload.createdAt = serverTimestamp();
-      }
-      await setDoc(chatDocRef, payload, { merge: true });
-    } catch (e) {
-      console.error("Error ensuring chat meta:", e);
-    }
   },
 
   async setTypingStatus(chatId, isTyping) {
@@ -1251,7 +1315,7 @@ const firestoreModule = {
     
     const qy = query(
       collection(db, `artifacts/${appId}/public/data/chats/${chatId}/messages`),
-      orderBy("timestamp", "desc"),
+      orderBy("createdAt", "desc"),
       limit(pageSize)
     );
     
@@ -1280,7 +1344,7 @@ const firestoreModule = {
     try {
       const qy = query(
         collection(db, `artifacts/${appId}/public/data/chats/${chatId}/messages`),
-        orderBy("timestamp", "desc"),
+        orderBy("createdAt", "desc"),
         startAfter(cursor),
         limit(pageSize)
       );
@@ -1296,24 +1360,15 @@ const firestoreModule = {
     }
   },
 
-  async sendMessage(chatId, encryptedContent) {
-    try {
-      await addDoc(collection(db, `artifacts/${appId}/public/data/chats/${chatId}/messages`), {
-        senderId: auth.currentUser?.uid,
-        content: encryptedContent,
-        read: false,
-        timestamp: serverTimestamp()
-      });
-    } catch (e) {
-      console.error("Error sending message:", e);
-      throw e;
-    }
-  },
-
   async updateMessage(chatId, msgId, newEncryptedContent) {
     try {
       const msgRef = doc(db, `artifacts/${appId}/public/data/chats/${chatId}/messages`, msgId);
-      await updateDoc(msgRef, { content: newEncryptedContent });
+      await updateDoc(msgRef, {
+        ciphertext: newEncryptedContent.ciphertext,
+        nonce: newEncryptedContent.nonce,
+        version: newEncryptedContent.version,
+        updatedAt: serverTimestamp()
+      });
     } catch (e) {
       console.error("Error updating message:", e);
       throw e;
@@ -1335,29 +1390,6 @@ const firestoreModule = {
   }
 };
 
-// =============================================================================
-// STORAGE
-// =============================================================================
-async function uploadEncryptedMedia(chatId, file) {
-  try {
-    const { encryptedBlob, key, originalType, originalName } = await cryptoModule.encryptFile(file);
-    
-    const ts = Date.now();
-    const clean = originalName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'file';
-    const path = `artifacts/${appId}/chats/${chatId}/media/${ts}_${clean}.enc`;
-    const ref = sRef(storage, path);
-    
-    await uploadBytes(ref, encryptedBlob, { contentType: 'application/octet-stream' });
-    const url = await getDownloadURL(ref);
-    
-    return { url, key, originalType, originalName };
-  } catch (e) {
-    console.error("Error uploading encrypted media:", e);
-    throw e;
-  }
-}
-
-// =============================================================================
 // UI MODULE
 // =============================================================================
 const uiModule = {
@@ -1409,7 +1441,7 @@ const uiModule = {
 
   async openChat(chat) {
     if (activeChat && activeChat.partnerId === chat.partnerId) return;
-    
+
     document.querySelectorAll('#chat-list > div').forEach(el => {
       el.classList.toggle('bg-blue-800', el.dataset.chatPartnerId === chat.partnerId);
       el.classList.toggle('bg-gray-800/50', el.dataset.chatPartnerId !== chat.partnerId);
@@ -1446,11 +1478,11 @@ const uiModule = {
       participantUsernames[auth.currentUser.uid] = currentUsername;
     }
     const participants = [auth.currentUser?.uid, chat.partnerId].filter(Boolean);
-    await firestoreModule.ensureChatMeta(
-      chatId,
-      participants,
-      participantUsernames
-    );
+    let chatRef;
+    if (auth.currentUser?.uid) {
+      chatRef = await createOrJoinChat(auth.currentUser.uid, chat.partnerId, chatId);
+      await setDoc(chatRef, { participants, participantUsernames }, { merge: true });
+    }
     activeChat.partnerUsername = resolvedPartnerUsername;
 
     sharedSecrets[chat.partnerId] = await cryptoModule.deriveSharedSecret(
@@ -1475,31 +1507,65 @@ const uiModule = {
     chatWindow.classList.remove('hidden');
     chatWindow.classList.add('flex');
     chatHeaderName.textContent = resolvedPartnerUsername || '';
-    
+
+    const initialMessages = await loadMessages(chatId, async (errorMessage) => {
+      if (errorMessage) {
+        await modal.alert(t('error'), errorMessage);
+      }
+    });
+
+    for (const msg of initialMessages) {
+      const encryptedPayload = msg.ciphertext ? {
+        ciphertext: msg.ciphertext,
+        nonce: msg.nonce,
+        version: msg.version
+      } : msg.content;
+      const decrypted = await cryptoModule.decrypt(sharedSecrets[chat.partnerId], encryptedPayload);
+      await this.renderMessage(
+        msg.id,
+        decrypted,
+        msg,
+        msg.senderId === auth.currentUser?.uid,
+        'prepend'
+      );
+    }
+
+    loadOlderBtn.classList.toggle('hidden', initialMessages.length < initialMessageLimit);
+
     chatUnsubscribes['typing'] = firestoreModule.listenToTypingStatus(chatId, (docSnap) => {
       const d = docSnap?.exists() ? docSnap.data() : null;
       typingIndicator.textContent = (d && d.isTyping && d.who === chat.partnerId) ? t('typing') : "";
     });
-    
+
     firestoreModule.listenToMessagesFirstPage(chatId, async (snapshot) => {
-      loadOlderBtn.classList.toggle('hidden', snapshot.size < pageSize);
-      
+      loadOlderBtn.classList.toggle('hidden', snapshot.size < pageSize || snapshot.empty);
+
       for (const change of snapshot.docChanges()) {
         const docSnap = change.doc;
         const msgData = docSnap.data();
-        
+
         if (change.type === "added") {
           if (document.getElementById(`msg-${docSnap.id}`)) continue;
-          const decrypted = await cryptoModule.decrypt(sharedSecrets[chat.partnerId], msgData.content);
+          const encryptedPayload = msgData.ciphertext ? {
+            ciphertext: msgData.ciphertext,
+            nonce: msgData.nonce,
+            version: msgData.version
+          } : msgData.content;
+          const decrypted = await cryptoModule.decrypt(sharedSecrets[chat.partnerId], encryptedPayload);
           this.renderMessage(docSnap.id, decrypted, msgData, msgData.senderId === auth.currentUser?.uid, 'prepend');
         }
-        
+
         if (change.type === "modified") {
-          const decrypted = await cryptoModule.decrypt(sharedSecrets[chat.partnerId], msgData.content);
+          const encryptedPayload = msgData.ciphertext ? {
+            ciphertext: msgData.ciphertext,
+            nonce: msgData.nonce,
+            version: msgData.version
+          } : msgData.content;
+          const decrypted = await cryptoModule.decrypt(sharedSecrets[chat.partnerId], encryptedPayload);
           this.updateMessage(docSnap.id, decrypted, msgData);
         }
       }
-      
+
       const unread = [];
       snapshot.forEach(d => {
         const data = d.data();
@@ -1569,18 +1635,35 @@ const uiModule = {
       const img = document.createElement('img');
       img.className = 'max-w-full rounded-lg cursor-pointer';
       img.alt = 'Image';
-      
-      if (message.encryptedUrl && message.key) {
+      img.loading = 'lazy';
+
+      const storagePath = msgData?.media?.path || message.storagePath;
+      let loadedFromStorage = false;
+
+      if (storagePath) {
         try {
-          showLoading(t('loading'));
+          const downloadUrl = await getDownloadURL(ref(storage, storagePath));
+          img.src = downloadUrl;
+          loadedFromStorage = true;
+        } catch (e) {
+          console.error('Image load error:', e);
+          bubble.classList.add('bg-red-900');
+          const errP = document.createElement('p');
+          errP.className = 'text-red-300 text-xs';
+          errP.textContent = t('imageLoadFailed');
+          bubble.appendChild(errP);
+        }
+      }
+
+      if (!loadedFromStorage && message.encryptedUrl && message.key) {
+        try {
           const response = await fetch(message.encryptedUrl);
           const encryptedBlob = await response.blob();
           const decryptedData = await cryptoModule.decryptFile(encryptedBlob, message.key);
-          
+
           if (decryptedData) {
             const blob = new Blob([decryptedData], { type: message.originalType || 'image/jpeg' });
             img.src = URL.createObjectURL(blob);
-            img.onload = () => hideLoading();
           } else {
             throw new Error('Decryption failed');
           }
@@ -1591,22 +1674,25 @@ const uiModule = {
           errP.className = 'text-red-300 text-xs';
           errP.textContent = t('imageLoadFailed');
           bubble.appendChild(errP);
-          hideLoading();
         }
-      } else {
+      }
+
+      if (!img.src) {
         img.src = message.url || message.content || '';
       }
-      
+
       img.onclick = () => {
-        if (img.src.startsWith('blob:')) {
+        if (img.src.startsWith('blob:') || img.src.startsWith('http')) {
           window.open(img.src, '_blank');
         }
       };
-      
-      bubble.appendChild(img);
+
+      if (img.src) {
+        bubble.appendChild(img);
+      }
     }
     
-    const time = makeTimeString(msgData.timestamp);
+    const time = makeTimeString(msgData.timestamp || msgData.createdAt);
     const statusIndicator = isSender && userSettings.readReceipts ? 
       `<span id="status-${msgId}" class="ml-1 inline-block" style="color: ${msgData.read ? '#60a5fa' : '#9ca3af'}">${msgData.read ? '✓✓' : '✓'}</span>` : '';
     
@@ -1771,13 +1857,17 @@ async function handleLogout() {
 // MESSAGE HANDLING
 // =============================================================================
 async function handleSendMessage() {
+  if (!ensureChatSelectedOrEmptyState(activeChat?.chatId, (message) => modal.alert(t('info'), message))) {
+    return;
+  }
+
   const text = messageInput.value.trim();
-  if (!text || !activeChat) return;
-  
+  if (!text) return;
+
   if (text.length > 5000) {
     return modal.alert(t('tooLong'), t('maxCharsPerMessage'));
   }
-  
+
   if (!rateLimiter.canSend()) {
     return modal.alert(t('tooFast'), t('rateLimitMsg').replace('{limit}', rateLimiter.maxPerMinute));
   }
@@ -1794,13 +1884,24 @@ async function handleSendMessage() {
   }
 }
 
-async function encryptAndSendMessage(message) {
+async function encryptAndSendMessage(message, options = {}) {
   const sharedKey = sharedSecrets[activeChat.partnerId];
   if (!sharedKey) {
     throw new Error("No secure channel");
   }
+
   const encrypted = await cryptoModule.encrypt(sharedKey, message);
-  await firestoreModule.sendMessage(activeChat.chatId, encrypted);
+
+  return await sendMessageWithOptionalMedia({
+    db,
+    storage,
+    chatId: activeChat.chatId,
+    senderId: auth.currentUser?.uid,
+    ciphertext: encrypted.ciphertext,
+    nonce: encrypted.nonce,
+    version: encrypted.version,
+    file: options.file || null
+  });
 }
 
 async function handleDeleteMessage(msgId) {
@@ -1834,8 +1935,12 @@ async function handleImageSend(event) {
   const file = event.target.files[0];
   event.target.value = '';
   
-  if (!file || !activeChat) return;
-  
+  if (!file) return;
+
+  if (!ensureChatSelectedOrEmptyState(activeChat?.chatId, (message) => modal.alert(t('info'), message))) {
+    return;
+  }
+
   if (!file.type.startsWith('image/')) {
     return modal.alert(t('invalid'), t('invalidFileType'));
   }
@@ -1849,15 +1954,15 @@ async function handleImageSend(event) {
   }
 
   showLoading(t('encryptingAndUploading'));
-  
+
   try {
-    const { url, key, originalType, originalName } = await uploadEncryptedMedia(activeChat.chatId, file);
     await encryptAndSendMessage({
       type: 'image',
-      encryptedUrl: url,
-      key: key,
-      originalType: originalType,
-      originalName: originalName
+      originalName: file.name || 'image',
+      originalType: file.type,
+      size: file.size
+    }, {
+      file
     });
     rateLimiter.record();
   } catch (err) {
@@ -1907,11 +2012,12 @@ async function handleAddNewChat() {
       [auth.currentUser.uid]: currentUsername,
       [partnerId]: partner.username || sanitized
     };
-    await firestoreModule.ensureChatMeta(
-      chatId,
-      [auth.currentUser.uid, partnerId],
+
+    const chatRef = await createOrJoinChat(auth.currentUser.uid, partnerId, chatId);
+    await setDoc(chatRef, {
+      participants: [auth.currentUser.uid, partnerId],
       participantUsernames
-    );
+    }, { merge: true });
 
     hideLoading();
     uiModule.openChat({ partnerId, partnerUsername: partner.username || sanitized });
@@ -1923,20 +2029,27 @@ async function handleAddNewChat() {
 }
 
 async function handleLoadOlderMessages() {
-  if (!activeChat) return;
-  
+  if (!ensureChatSelectedOrEmptyState(activeChat?.chatId, (message) => modal.alert(t('info'), message))) {
+    return;
+  }
+
   loadOlderBtn.disabled = true;
   loadOlderBtn.textContent = t('loadingMsg');
-  
+
   try {
     const { docs } = await firestoreModule.loadOlder(activeChat.chatId);
-    
+
     for (const d of docs) {
       if (document.getElementById(`msg-${d.id}`)) continue;
       const msgData = d.data();
+      const encryptedPayload = msgData.ciphertext ? {
+        ciphertext: msgData.ciphertext,
+        nonce: msgData.nonce,
+        version: msgData.version
+      } : msgData.content;
       const decrypted = await cryptoModule.decrypt(
         sharedSecrets[activeChat.partnerId],
-        msgData.content
+        encryptedPayload
       );
       uiModule.renderMessage(
         d.id,

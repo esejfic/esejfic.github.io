@@ -1,0 +1,19 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isMember(chatId) {
+      return request.auth != null
+        && firestore.get(/databases/(default)/documents/artifacts/secure-messenger-v2/public/data/chats/$(chatId))
+             .data.members[request.auth.uid] == true;
+    }
+    match /chatMedia/{chatId}/{messageId}/{fileName} {
+      allow read: if isMember(chatId);
+      allow write: if isMember(chatId)
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('^image/[^;]*$');
+    }
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
