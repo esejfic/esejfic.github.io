@@ -470,33 +470,61 @@ let userSettings = {
 // =============================================================================
 // CHAT DATA HELPERS
 // =============================================================================
-async function createOrJoinChat(myUid, partnerUid, chatId) {
+// Merge: unify signature + robust chat creation (works with members-map & participants-array)
+async function createOrJoinChat(myUid, partnerUid, chatId, additionalData = {}) {
   const chatRef = doc(db, 'artifacts', appId, 'public', 'data', 'chats', chatId);
+  const now = serverTimestamp();
+
+  await setDoc(
+    chatRef,
+    {
+      // support both membership models
+      members: { [myUid]: true, [partnerUid]: true },
+      participants: [myUid, partnerUid],
+
+      owner: myUid,
+      createdAt: now,
+      updatedAt: now,
+      ...additionalData,
+    },
+    { merge: true }
+  );
+
+  return chatRef;
+}
+
 
   await setDoc(chatRef, {
     members: { [myUid]: true, [partnerUid]: true },
     owner: myUid,
-    createdAt: serverTimestamp()
+    createdAt: now,
+    updatedAt: now,
+    ...additionalData
   }, { merge: true });
 
   const myListRef = doc(db, 'artifacts', appId, 'users', myUid, 'chats', chatId);
-  await setDoc(myListRef, { createdAt: serverTimestamp() }, { merge: true });
+  await setDoc(myListRef, { createdAt: now }, { merge: true });
+
 
   return chatRef;
 }
 
 async function fetchMyChats(myUid) {
   const chatsCol = collection(db, 'artifacts', appId, 'public', 'data', 'chats');
+  // unified query name and consistent ordering
   const q = query(chatsCol, where(`members.${myUid}`, '==', true), orderBy('createdAt', 'desc'));
   const snap = await getDocs(q);
+
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 async function loadMessages(chatId, onError) {
   try {
     const msgsCol = collection(db, 'artifacts', appId, 'public', 'data', 'chats', chatId, 'messages');
-    const q = query(msgsCol, orderBy('createdAt', 'asc'), limit(50));
+    // merge: use consistent variable name and configurable message limit
+    const q = query(msgsCol, orderBy('createdAt', 'asc'), limit(initialMessageLimit || 50));
     const snap = await getDocs(q);
+
     return snap.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch (e) {
     if (e?.code === 'permission-denied') {
@@ -516,17 +544,41 @@ async function sendMessageWithOptionalMedia({
   ciphertext,
   nonce,
   version,
-  file
+export async function sendMessageWithOptionalMedia({
+  db,
+  storage: storageInstance,
+  chatId,
+  senderId,
+  ciphertext,
+  nonce,
+  version,
+  file,
+  messageId = crypto.randomUUID(),
+  storagePath
 }) {
-  const messageId = crypto.randomUUID();
   let media;
 
   if (file) {
-    const storagePath = `chatMedia/${chatId}/${messageId}/${file.name}`;
-    const storageRef = ref(storageInstance, storagePath);
-    await uploadBytes(storageRef, file, { contentType: file.type }); // contentType wichtig
-    media = { path: storagePath, size: file.size, contentType: file.type };
+    // Basale Typprüfung (Regeln erwarten image/*; Client prüft vor dem Upload)
+    if (!file.type?.startsWith('image/')) {
+      throw new Error('Invalid file type');
+    }
+    // Sichere, kurze Dateinamen (vermeidet Pfad-/Encoding-Probleme)
+    const safeName = (file.name || 'image').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'image';
+
+    // Pfad kompatibel zu Storage-Rules (chatMedia/{chatId}/{messageId}/{fileName})
+    const resolvedPath = storagePath || `chatMedia/${chatId}/${messageId}/${safeName}`;
+    const storageRef = ref(storageInstance, resolvedPath);
+
+    // contentType MUSS gesetzt werden (Storage-Rules prüfen image/*)
+    await uploadBytes(storageRef, file, { contentType: file.type });
+
+    media = { path: resolvedPath, size: file.size, contentType: file.type };
   }
+
+  const now = serverTimestamp();
+  // … (restlicher Message-Write folgt unterhalb unverändert)
+}
 
   const msgRef = doc(
     collection(database, 'artifacts', appId, 'public', 'data', 'chats', chatId, 'messages'),
@@ -538,12 +590,19 @@ async function sendMessageWithOptionalMedia({
     ciphertext,
     nonce,
     version,
-    createdAt: serverTimestamp(),
+  await setDoc(msgRef, {
+    senderId,
+    ciphertext,
+    nonce,
+    version,
+    createdAt: now,   // kompatibel zu vorhandenen Queries
+    timestamp: now,   // optionales Feld für bestehende UI-Sortierung
+    read: false,      // Default-Flag; UI kann dieses Feld nutzen
     ...(media ? { media } : {})
   });
 
-  return messageId;
-}
+  return { messageId, media };
+
 
 function ensureChatSelectedOrEmptyState(currentChatId, showEmpty) {
   if (!currentChatId) {
@@ -1478,10 +1537,13 @@ const uiModule = {
       participantUsernames[auth.currentUser.uid] = currentUsername;
     }
     const participants = [auth.currentUser?.uid, chat.partnerId].filter(Boolean);
-    let chatRef;
     if (auth.currentUser?.uid) {
-      chatRef = await createOrJoinChat(auth.currentUser.uid, chat.partnerId, chatId);
-      await setDoc(chatRef, { participants, participantUsernames }, { merge: true });
+      await createOrJoinChat(auth.currentUser.uid, chat.partnerId, chatId, {
+        participants,
+        participantUsernames
+      });
+    }
+
     }
     activeChat.partnerUsername = resolvedPartnerUsername;
 
@@ -1893,6 +1955,7 @@ async function encryptAndSendMessage(message, options = {}) {
   const encrypted = await cryptoModule.encrypt(sharedKey, message);
 
   return await sendMessageWithOptionalMedia({
+
     db,
     storage,
     chatId: activeChat.chatId,
@@ -1900,8 +1963,13 @@ async function encryptAndSendMessage(message, options = {}) {
     ciphertext: encrypted.ciphertext,
     nonce: encrypted.nonce,
     version: encrypted.version,
-    file: options.file || null
+    file: options.file || null,
+    messageId: options.messageId,
+    storagePath: options.storagePath
   });
+
+  return options.messageId;
+
 }
 
 async function handleDeleteMessage(msgId) {
@@ -1956,13 +2024,25 @@ async function handleImageSend(event) {
   showLoading(t('encryptingAndUploading'));
 
   try {
+    // generate safe messageId and storage path for image uploads
+    const messageId = crypto.randomUUID();
+    const safeName = (file.name || 'image')
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .slice(0, 80) || 'image';
+    const storagePath = `chatMedia/${activeChat.chatId}/${messageId}/${safeName}`;
+
     await encryptAndSendMessage({
       type: 'image',
-      originalName: file.name || 'image',
+      storagePath,
+      originalName: file.name || safeName,
       originalType: file.type,
       size: file.size
     }, {
-      file
+      file,
+      messageId,
+      storagePath
+    });
+
     });
     rateLimiter.record();
   } catch (err) {
@@ -2013,11 +2093,11 @@ async function handleAddNewChat() {
       [partnerId]: partner.username || sanitized
     };
 
-    const chatRef = await createOrJoinChat(auth.currentUser.uid, partnerId, chatId);
-    await setDoc(chatRef, {
+    await createOrJoinChat(auth.currentUser.uid, partnerId, chatId, {
       participants: [auth.currentUser.uid, partnerId],
       participantUsernames
-    }, { merge: true });
+    });
+
 
     hideLoading();
     uiModule.openChat({ partnerId, partnerUsername: partner.username || sanitized });
