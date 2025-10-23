@@ -1995,8 +1995,6 @@ async function handleImageSend(event) {
   } finally {
     hideLoading();
   }
-}
-
 
 async function handleAddNewChat() {
   try {
