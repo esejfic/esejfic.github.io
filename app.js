@@ -1977,19 +1977,19 @@ async function handleImageSend(event) {
       .slice(0, 80) || 'image';
     const storagePath = `chatMedia/${activeChat.chatId}/${messageId}/${safeName}`;
 try {
-  await encryptAndSendMessage({
-    type: 'image',
-    storagePath,
-    originalName: file.name || safeName,
-    originalType: file.type,
-    size: file.size
-  }, {
-    file,
-    messageId,
-    storagePath
-  });
+await encryptAndSendMessage({
+  type: 'image',
+  storagePath,
+  originalName: file.name || safeName,
+  originalType: file.type,
+  size: file.size
+}, {
+  file,
+  messageId,
+  storagePath
+});
 
-  rateLimiter.record();
+rateLimiter.record();
 } catch (err) {
   console.error(err);
   modal.alert(t('error'), t('imageUploadFailed'));
