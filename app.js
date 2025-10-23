@@ -1977,17 +1977,21 @@ async function handleImageSend(event) {
       .replace(/[^a-zA-Z0-9._-]/g, '_')
       .slice(0, 80) || 'image';
     const storagePath = `chatMedia/${activeChat.chatId}/${messageId}/${safeName}`;
-    await encryptAndSendMessage({
+    const messagePayload = {
       type: 'image',
       storagePath,
       originalName: file.name || safeName,
       originalType: file.type,
       size: file.size
-    }, {
+    };
+
+    const uploadOptions = {
       file,
       messageId,
       storagePath
-    });
+    };
+
+    await encryptAndSendMessage(messagePayload, uploadOptions);
 
     rateLimiter.record();
   } catch (err) {
