@@ -1996,7 +1996,6 @@ async function handleImageSend(event) {
     hideLoading();
   }
 
-
 async function handleAddNewChat() {
   try {
     if (!auth.currentUser || !currentUsername) {
