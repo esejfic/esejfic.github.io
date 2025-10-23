@@ -111,7 +111,7 @@ service cloud.firestore {
         allow delete: if chatHasMember() && request.auth.uid == uid;
       }
 
-   match /users/{userId}/chats/{chatId} {
+match /users/{userId}/chats/{chatId} {
   // Lesen: eigener Nutzer
   allow read: if request.auth != null && request.auth.uid == userId;
 
