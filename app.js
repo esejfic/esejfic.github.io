@@ -1917,6 +1917,7 @@ async function encryptAndSendMessage(message, options = {}) {
     messageId: options.messageId,
     storagePath: options.storagePath
   });
+}
 
 async function handleDeleteMessage(msgId) {
   try {
@@ -1987,6 +1988,16 @@ async function handleImageSend(event) {
       messageId,
       storagePath
     });
+codex/fix-missing-after-try-block-error-dp9u9b
+    
+rateLimiter.record();
+} catch (err) {
+  console.error(err);
+  modal.alert(t('error'), t('imageUploadFailed'));
+} finally {
+  hideLoading();
+}
+
 
     rateLimiter.record();
   } catch (err) {
