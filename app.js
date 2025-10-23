@@ -1946,55 +1946,45 @@ function handleTyping() {
   }, 2000);
 }
 
+// Replace (or insert) this function in app.js
 async function handleImageSend(event) {
   const file = event.target.files[0];
   event.target.value = '';
 
-  if (!file) return;
-
-  if (!ensureChatSelectedOrEmptyState(activeChat?.chatId, (message) => modal.alert(t('info'), message))) {
-    return;
-  }
+  if (!file || !activeChat) return;
 
   if (!file.type.startsWith('image/')) {
-    return modal.alert(t('invalid'), t('invalidFileType'));
+    return modal.alert(t('invalid'), t('pleaseSelectImage'));
   }
 
   if (file.size > 10 * 1024 * 1024) {
-    return modal.alert(t('fileTooLarge'), t('maxFileSize'));
+    return modal.alert(t('tooLarge'), t('max10MB'));
   }
 
   if (!rateLimiter.canSend()) {
     return modal.alert(t('tooFast'), t('pleaseWait'));
   }
 
-  showLoading(t('encryptingAndUploading'));
+  showLoading(t('encryptingUploading'));
 
   try {
-    // generate safe messageId and storage path for image uploads
-    const messageId = crypto.randomUUID();
-    const safeName = (file.name || 'image')
-      .replace(/[^a-zA-Z0-9._-]/g, '_')
-      .slice(0, 80) || 'image';
-    const storagePath = `chatMedia/${activeChat.chatId}/${messageId}/${safeName}`;
+    const { url, key, originalType, originalName } = await uploadEncryptedMedia(activeChat.chatId, file);
+
     await encryptAndSendMessage({
       type: 'image',
-      storagePath,
-      originalName: file.name || safeName,
-      originalType: file.type,
-      size: file.size
-    }, {
-      file,
-      messageId,
-      storagePath
+      encryptedUrl: url,
+      key: key,
+      originalType: originalType,
+      originalName: originalName
     });
-    
-rateLimiter.record();
-} catch (err) {
-  console.error(err);
-  modal.alert(t('error'), t('imageUploadFailed'));
-} finally {
-  hideLoading();
+
+    rateLimiter.record();
+  } catch (err) {
+    console.error(err);
+    modal.alert(t('error'), t('imageUploadFailed'));
+  } finally {
+    hideLoading();
+  }
 }
 
 
