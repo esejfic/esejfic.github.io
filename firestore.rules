@@ -2,6 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /artifacts/{appId} {
+
       match /public/data/users/{userId} {
         // Jeder darf Profile lesen
         allow read: if true;
@@ -45,42 +46,57 @@ service cloud.firestore {
 
         allow read: if isMember();
 
-        // Erlaubt 'participantUsernames' zusätzlich und prüft Grundstruktur
-        allow create: if request.auth != null
-          && (
-               (request.resource.data.members is map
-                 && request.resource.data.members[request.auth.uid] == true)
-               ||
-               (request.resource.data.participants is list
-                 && request.resource.data.participants.hasAny([request.auth.uid]))
-             )
-          && request.resource.data.keys().hasOnly([
-               'members','participants','participantUsernames','owner','createdAt','updatedAt','title'
-             ])
-          // Konsistenz: Wenn participantUsernames vorhanden, dann Map
-          && (!('participantUsernames' in request.resource.data)
-              || (request.resource.data.participantUsernames is map
-                  // Keys dürfen nur die UIDs aus 'participants' enthalten (falls vorhanden)
-                  && (!('participants' in request.resource.data)
-                      || request.resource.data.participantUsernames.keys().hasOnly(request.resource.data.participants))));
+// Chats – Mitgliedschaft per members{uid:true} ODER participants[]
+match /public/data/chats/{chatId} {
+  function isMember() {
+    return request.auth != null && (
+      (resource.data.members[request.auth.uid] == true) ||
+      (resource.data.participants is list && resource.data.participants.hasAny([request.auth.uid]))
+    );
+  }
 
-        allow update: if isMember()
-          && request.resource.data.keys().hasOnly([
-               'members','participants','participantUsernames','owner','createdAt','updatedAt','title'
-             ])
-          && request.resource.data.createdAt == resource.data.createdAt
-          // Falls participantUsernames gesetzt wird/bleibt, gleiche Grundprüfung
-          && (!('participantUsernames' in request.resource.data)
-              || (request.resource.data.participantUsernames is map
-                  && (
-                       ('participants' in request.resource.data
-                         && request.resource.data.participants is list
-                         && request.resource.data.participantUsernames.keys().hasOnly(request.resource.data.participants))
-                       ||
-                       (!('participants' in request.resource.data)
-                         && resource.data.participants is list
-                         && request.resource.data.participantUsernames.keys().hasOnly(resource.data.participants))
-                     )));
+  allow read: if isMember();
+
+  // Erlaubt 'participantUsernames' zusätzlich und prüft Grundstruktur
+  allow create: if request.auth != null
+    && (
+         (request.resource.data.members is map
+           && request.resource.data.members[request.auth.uid] == true)
+         ||
+         (request.resource.data.participants is list
+           && request.resource.data.participants.hasAny([request.auth.uid]))
+       )
+    && request.resource.data.keys().hasOnly([
+         'members','participants','participantUsernames','owner','createdAt','updatedAt','title'
+       ])
+    // Konsistenz: Wenn participantUsernames vorhanden, dann Map
+    && (!('participantUsernames' in request.resource.data)
+        || (request.resource.data.participantUsernames is map
+            // Keys dürfen nur die UIDs aus 'participants' enthalten (falls vorhanden)
+            && (!('participants' in request.resource.data)
+                || request.resource.data.participantUsernames.keys().hasOnly(request.resource.data.participants))));
+
+  allow update: if isMember()
+    && request.resource.data.keys().hasOnly([
+         'members','participants','participantUsernames','owner','createdAt','updatedAt','title'
+       ])
+    && request.resource.data.createdAt == resource.data.createdAt
+    // Falls participantUsernames gesetzt wird/bleibt, gleiche Grundprüfung
+    && (!('participantUsernames' in request.resource.data)
+        || (request.resource.data.participantUsernames is map
+            && (
+                 ('participants' in request.resource.data
+                   && request.resource.data.participants is list
+                   && request.resource.data.participantUsernames.keys().hasOnly(request.resource.data.participants))
+                 ||
+                 (!('participants' in request.resource.data)
+                   && resource.data.participants is list
+                   && request.resource.data.participantUsernames.keys().hasOnly(resource.data.participants))
+               )));
+
+  allow delete: if isMember() && request.auth.uid == resource.data.owner;
+}
+
 
         allow delete: if isMember() && request.auth.uid == resource.data.owner;
       }
@@ -108,7 +124,8 @@ service cloud.firestore {
                 && request.resource.data.media.keys().hasOnly(['path','size','contentType','width','height'])
                 && (request.resource.data.media.path is string && request.resource.data.media.path.matches('^chatMedia/[^/]+/[^/]+/.+'))
                 && (request.resource.data.media.size is int && request.resource.data.media.size <= 10 * 1024 * 1024)
-                && (request.resource.data.media.contentType is string && request.resource.data.media.contentType.matches('^(image/[^;]*|application/octet-stream)$'))
+&& (request.resource.data.media.contentType is string
+    && request.resource.data.media.contentType.matches('^(image/[^;]*|application/octet-stream)$'))
              ));
 
         allow update: if false;
@@ -136,12 +153,17 @@ service cloud.firestore {
         allow delete: if chatHasMember() && request.auth.uid == uid;
       }
 
-      // Private Chatliste – nur eigener Nutzer
-      match /users/{userId}/chats/{chatId} {
-        allow read, create, update, delete: if request.auth != null && request.auth.uid == userId
-          && (request.method == 'read' || ((request.resource.data is map)
-            && request.resource.data.keys().hasOnly(['lastReadAt','pinned','nickname','createdAt'])));
-      }
+match /users/{userId}/chats/{chatId} {
+  // Lesen: eigener Nutzer
+  allow read: if request.auth != null && request.auth.uid == userId;
+
+  // Schreiben: eigener Nutzer + Feld-Whitelist prüfen
+  allow create, update, delete: if
+    request.auth != null && request.auth.uid == userId &&
+    request.resource.data is map &&
+    request.resource.data.keys().hasOnly(['lastReadAt','pinned','nickname','createdAt']);
+}
+
     }
   }
 }

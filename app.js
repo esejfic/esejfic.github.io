@@ -1494,8 +1494,7 @@ const uiModule = {
         participantUsernames
       });
     }
-
-    }
+    
     activeChat.partnerUsername = resolvedPartnerUsername;
 
     sharedSecrets[chat.partnerId] = await cryptoModule.deriveSharedSecret(
@@ -1919,10 +1918,6 @@ async function encryptAndSendMessage(message, options = {}) {
     storagePath: options.storagePath
   });
 
-  return options.messageId;
-
-}
-
 async function handleDeleteMessage(msgId) {
   try {
     const confirmed = await modal.confirm(
@@ -1981,27 +1976,48 @@ async function handleImageSend(event) {
       .replace(/[^a-zA-Z0-9._-]/g, '_')
       .slice(0, 80) || 'image';
     const storagePath = `chatMedia/${activeChat.chatId}/${messageId}/${safeName}`;
+try {
+await encryptAndSendMessage({
+  type: 'image',
+  storagePath,
+  originalName: file.name || safeName,
+  originalType: file.type,
+  size: file.size
+}, {
+  file,
+  messageId,
+  storagePath
+});
 
-    await encryptAndSendMessage({
-      type: 'image',
-      storagePath,
-      originalName: file.name || safeName,
-      originalType: file.type,
-      size: file.size
-    }, {
-      file,
-      messageId,
-      storagePath
-    });
+try {
+  await encryptAndSendMessage({
+    type: 'image',
+    storagePath,
+    originalName: file.name || safeName,
+    originalType: file.type,
+    size: file.size
+  }, {
+    file,
+    messageId,
+    storagePath
+  });
 
-    rateLimiter.record();
-  } catch (err) {
-    console.error(err);
-    modal.alert(t('error'), t('imageUploadFailed'));
-  } finally {
-    hideLoading();
-  }
+  rateLimiter.record();
+} catch (err) {
+  console.error(err);
+  modal.alert(t('error'), t('imageUploadFailed'));
+} finally {
+  hideLoading();
 }
+
+rateLimiter.record();
+} catch (err) {
+  console.error(err);
+  modal.alert(t('error'), t('imageUploadFailed'));
+} finally {
+  hideLoading();
+}
+
 
 async function handleAddNewChat() {
   try {
