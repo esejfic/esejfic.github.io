@@ -493,22 +493,6 @@ async function createOrJoinChat(myUid, partnerUid, chatId, additionalData = {}) 
   return chatRef;
 }
 
-
-  await setDoc(chatRef, {
-    members: { [myUid]: true, [partnerUid]: true },
-    owner: myUid,
-    createdAt: now,
-    updatedAt: now,
-    ...additionalData
-  }, { merge: true });
-
-  const myListRef = doc(db, 'artifacts', appId, 'users', myUid, 'chats', chatId);
-  await setDoc(myListRef, { createdAt: now }, { merge: true });
-
-
-  return chatRef;
-}
-
 async function fetchMyChats(myUid) {
   const chatsCol = collection(db, 'artifacts', appId, 'public', 'data', 'chats');
   // unified query name and consistent ordering
@@ -536,14 +520,6 @@ async function loadMessages(chatId, onError) {
   }
 }
 
-async function sendMessageWithOptionalMedia({
-  db: database,
-  storage: storageInstance,
-  chatId,
-  senderId,
-  ciphertext,
-  nonce,
-  version,
 export async function sendMessageWithOptionalMedia({
   db,
   storage: storageInstance,
@@ -559,49 +535,24 @@ export async function sendMessageWithOptionalMedia({
   let media;
 
   if (file) {
-    // Basale Typprüfung (Regeln erwarten image/*; Client prüft vor dem Upload)
-    if (!file.type?.startsWith('image/')) {
-      throw new Error('Invalid file type');
-    }
-    // Sichere, kurze Dateinamen (vermeidet Pfad-/Encoding-Probleme)
+    if (!file.type?.startsWith('image/')) throw new Error('Invalid file type');
     const safeName = (file.name || 'image').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'image';
-
-    // Pfad kompatibel zu Storage-Rules (chatMedia/{chatId}/{messageId}/{fileName})
     const resolvedPath = storagePath || `chatMedia/${chatId}/${messageId}/${safeName}`;
     const storageRef = ref(storageInstance, resolvedPath);
-
-    // contentType MUSS gesetzt werden (Storage-Rules prüfen image/*)
     await uploadBytes(storageRef, file, { contentType: file.type });
-
     media = { path: resolvedPath, size: file.size, contentType: file.type };
   }
 
   const now = serverTimestamp();
-  // … (restlicher Message-Write folgt unterhalb unverändert)
-}
-
-  const msgRef = doc(
-    collection(database, 'artifacts', appId, 'public', 'data', 'chats', chatId, 'messages'),
-    messageId
-  );
-
+  const msgRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'chats', chatId, 'messages'), messageId);
   await setDoc(msgRef, {
-    senderId,
-    ciphertext,
-    nonce,
-    version,
-  await setDoc(msgRef, {
-    senderId,
-    ciphertext,
-    nonce,
-    version,
-    createdAt: now,   // kompatibel zu vorhandenen Queries
-    timestamp: now,   // optionales Feld für bestehende UI-Sortierung
-    read: false,      // Default-Flag; UI kann dieses Feld nutzen
+    senderId, ciphertext, nonce, version,
+    createdAt: now, timestamp: now, read: false,
     ...(media ? { media } : {})
   });
 
   return { messageId, media };
+}
 
 
 function ensureChatSelectedOrEmptyState(currentChatId, showEmpty) {
@@ -2002,7 +1953,7 @@ function handleTyping() {
 async function handleImageSend(event) {
   const file = event.target.files[0];
   event.target.value = '';
-  
+
   if (!file) return;
 
   if (!ensureChatSelectedOrEmptyState(activeChat?.chatId, (message) => modal.alert(t('info'), message))) {
@@ -2012,11 +1963,11 @@ async function handleImageSend(event) {
   if (!file.type.startsWith('image/')) {
     return modal.alert(t('invalid'), t('invalidFileType'));
   }
-  
+
   if (file.size > 10 * 1024 * 1024) {
     return modal.alert(t('fileTooLarge'), t('maxFileSize'));
   }
-  
+
   if (!rateLimiter.canSend()) {
     return modal.alert(t('tooFast'), t('pleaseWait'));
   }
@@ -2043,7 +1994,6 @@ async function handleImageSend(event) {
       storagePath
     });
 
-    });
     rateLimiter.record();
   } catch (err) {
     console.error(err);

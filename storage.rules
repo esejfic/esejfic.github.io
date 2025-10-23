@@ -3,17 +3,30 @@ service firebase.storage {
   match /b/{bucket}/o {
     function isMember(chatId) {
       return request.auth != null
-        && firestore.get(/databases/(default)/documents/artifacts/secure-messenger-v2/public/data/chats/$(chatId))
-             .data.members[request.auth.uid] == true;
+        && (
+          // alt: Map
+          firestore.get(/databases/(default)/documents/artifacts/secure-messenger-v2/public/data/chats/$(chatId))
+            .data.members[request.auth.uid] == true
+          ||
+          // neu: Array
+          (firestore.get(/databases/(default)/documents/artifacts/secure-messenger-v2/public/data/chats/$(chatId))
+            .data.participants is list
+           && firestore.get(/databases/(default)/documents/artifacts/secure-messenger-v2/public/data/chats/$(chatId))
+            .data.participants.hasAny([request.auth.uid]))
+        );
     }
+
+    // Pfad wie im Client: chatMedia/{chatId}/{messageId}/{fileName}
     match /chatMedia/{chatId}/{messageId}/{fileName} {
-      allow read: if isMember(chatId);
+      allow read:  if isMember(chatId);
       allow write: if isMember(chatId)
         && request.resource.size <= 10 * 1024 * 1024
-        && request.resource.contentType.matches('^image/[^;]*$');
+        && (
+             request.resource.contentType.matches('^image/[^;]*$')
+             || request.resource.contentType == 'application/octet-stream'
+           );
     }
-    match /{path=**} {
-      allow read, write: if false;
-    }
+
+    match /{path=**} { allow read, write: if false; }
   }
 }
