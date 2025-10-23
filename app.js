@@ -1494,8 +1494,7 @@ const uiModule = {
         participantUsernames
       });
     }
-
-    }
+    
     activeChat.partnerUsername = resolvedPartnerUsername;
 
     sharedSecrets[chat.partnerId] = await cryptoModule.deriveSharedSecret(
