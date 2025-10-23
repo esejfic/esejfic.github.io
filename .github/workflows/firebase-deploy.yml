@@ -28,7 +28,7 @@ jobs:
       - name: Deploy Firestore & Storage rules
         uses: w9jds/firebase-action@v13.4.1
         with:
-          args: deploy --only firestore:rules,storage:rules
+          args: deploy --only firestore:rules,storage
         env:
           # Service-Account JSON als Repository-Secret hinterlegen
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
