@@ -1995,7 +1995,6 @@ async function handleImageSend(event) {
   } finally {
     hideLoading();
   }
-
 }
 
 
