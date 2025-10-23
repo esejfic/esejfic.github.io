@@ -110,11 +110,18 @@ service cloud.firestore {
         allow delete: if chatHasMember() && request.auth.uid == uid;
       }
 
-      // Private Chatliste – nur eigener Nutzer
-      match /users/{userId}/chats/{chatId} {
-        allow read, create, update, delete: if request.auth != null && request.auth.uid == userId
-          && (request.method != 'read' ==> (request.resource.data is map
-            && request.resource.data.keys().hasOnly(['lastReadAt','pinned','nickname','createdAt'])));
+   match /users/{userId}/chats/{chatId} {
+  allow read, create, update, delete: if
+    request.auth != null && request.auth.uid == userId &&
+    (
+      request.method == 'get' || request.method == 'list' ||              // Reads
+      (
+        request.resource.data is map &&                                   // Writes
+        request.resource.data.keys().hasOnly(['lastReadAt','pinned','nickname','createdAt'])
+      )
+    );
+}
+
       }
     }
   }
