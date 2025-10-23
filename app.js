@@ -1988,7 +1988,6 @@ async function handleImageSend(event) {
       messageId,
       storagePath
     });
-codex/fix-missing-after-try-block-error-dp9u9b
     
 rateLimiter.record();
 } catch (err) {
