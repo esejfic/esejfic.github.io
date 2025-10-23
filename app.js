@@ -1988,6 +1988,16 @@ async function handleImageSend(event) {
       messageId,
       storagePath
     });
+codex/fix-missing-after-try-block-error-dp9u9b
+    
+rateLimiter.record();
+} catch (err) {
+  console.error(err);
+  modal.alert(t('error'), t('imageUploadFailed'));
+} finally {
+  hideLoading();
+}
+
 
     rateLimiter.record();
   } catch (err) {
@@ -1996,8 +2006,6 @@ async function handleImageSend(event) {
   } finally {
     hideLoading();
   }
-}
-
 
 async function handleAddNewChat() {
   try {
