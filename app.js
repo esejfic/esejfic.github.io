@@ -1948,7 +1948,7 @@ function handleTyping() {
 async function handleImageSend(event) {
   const file = event.target.files[0];
   event.target.value = '';
-  
+
   if (!file) return;
 
   if (!ensureChatSelectedOrEmptyState(activeChat?.chatId, (message) => modal.alert(t('info'), message))) {
@@ -1958,11 +1958,11 @@ async function handleImageSend(event) {
   if (!file.type.startsWith('image/')) {
     return modal.alert(t('invalid'), t('invalidFileType'));
   }
-  
+
   if (file.size > 10 * 1024 * 1024) {
     return modal.alert(t('fileTooLarge'), t('maxFileSize'));
   }
-  
+
   if (!rateLimiter.canSend()) {
     return modal.alert(t('tooFast'), t('pleaseWait'));
   }
@@ -1989,12 +1989,27 @@ await encryptAndSendMessage({
   storagePath
 });
 
-rateLimiter.record();
+try {
+  await encryptAndSendMessage({
+    type: 'image',
+    storagePath,
+    originalName: file.name || safeName,
+    originalType: file.type,
+    size: file.size
+  }, {
+    file,
+    messageId,
+    storagePath
+  });
+
+  rateLimiter.record();
 } catch (err) {
   console.error(err);
   modal.alert(t('error'), t('imageUploadFailed'));
 } finally {
   hideLoading();
+}
+
 }
 
 
