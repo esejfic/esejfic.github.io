@@ -111,17 +111,17 @@ service cloud.firestore {
         allow delete: if chatHasMember() && request.auth.uid == uid;
       }
 
-      // Private Chatliste pro Nutzer
-      match /users/{userId}/chats/{chatId} {
-        // Lesen: eigener Nutzer
-        allow read: if request.auth != null && request.auth.uid == userId;
+   match /users/{userId}/chats/{chatId} {
+  // Lesen: eigener Nutzer
+  allow read: if request.auth != null && request.auth.uid == userId;
 
-        // Schreiben: eigener Nutzer + Feld-Whitelist prüfen
-        allow create, update, delete: if
-          request.auth != null && request.auth.uid == userId &&
-          request.resource.data is map &&
-          request.resource.data.keys().hasOnly(['lastReadAt','pinned','nickname','createdAt']);
-      }
+  // Schreiben: eigener Nutzer + Feld-Whitelist prüfen
+  allow create, update, delete: if
+    request.auth != null && request.auth.uid == userId &&
+    request.resource.data is map &&
+    request.resource.data.keys().hasOnly(['lastReadAt','pinned','nickname','createdAt']);
+}
+
 
     }
   }
