@@ -1918,10 +1918,6 @@ async function encryptAndSendMessage(message, options = {}) {
     storagePath: options.storagePath
   });
 
-  return options.messageId;
-
-}
-
 async function handleDeleteMessage(msgId) {
   try {
     const confirmed = await modal.confirm(
