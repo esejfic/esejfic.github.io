@@ -2,6 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /artifacts/{appId} {
+
       match /public/data/users/{userId} {
         // Jeder darf Profile lesen
         allow read: if true;
@@ -82,7 +83,7 @@ service cloud.firestore {
                 && request.resource.data.media.keys().hasOnly(['path','size','contentType','width','height'])
                 && (request.resource.data.media.path is string && request.resource.data.media.path.matches('^chatMedia/[^/]+/[^/]+/.+'))
                 && (request.resource.data.media.size is int && request.resource.data.media.size <= 10 * 1024 * 1024)
-                && (request.resource.data.media.contentType is string && request.resource.data.media.contentType.matches('^image/|^application/octet-stream$'))
+                && (request.resource.data.media.contentType is string && request.resource.data.media.contentType.matches('^(image/[^;]*|application/octet-stream)$'))
              ));
 
         allow update: if false;
@@ -110,19 +111,18 @@ service cloud.firestore {
         allow delete: if chatHasMember() && request.auth.uid == uid;
       }
 
-   match /users/{userId}/chats/{chatId} {
-  allow read, create, update, delete: if
-    request.auth != null && request.auth.uid == userId &&
-    (
-      request.method == 'get' || request.method == 'list' ||              // Reads
-      (
-        request.resource.data is map &&                                   // Writes
-        request.resource.data.keys().hasOnly(['lastReadAt','pinned','nickname','createdAt'])
-      )
-    );
-}
+      // Private Chatliste pro Nutzer
+      match /users/{userId}/chats/{chatId} {
+        // Lesen: eigener Nutzer
+        allow read: if request.auth != null && request.auth.uid == userId;
 
+        // Schreiben: eigener Nutzer + Feld-Whitelist prüfen
+        allow create, update, delete: if
+          request.auth != null && request.auth.uid == userId &&
+          request.resource.data is map &&
+          request.resource.data.keys().hasOnly(['lastReadAt','pinned','nickname','createdAt']);
       }
+
     }
   }
 }
