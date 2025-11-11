@@ -35,6 +35,22 @@ service cloud.firestore {
         allow delete: if request.auth != null && request.auth.uid == userId;
       }
 
+      // Usernames – Zuordnung username -> userId
+      match /public/data/usernames/{username} {
+        // Jeder darf Usernames lesen (um Duplikate zu prüfen)
+        allow read: if true;
+
+        // Erstellen nur für authentifizierte Nutzer
+        allow create: if request.auth != null
+          && (request.resource.data is map)
+          && request.resource.data.keys().hasOnly(['userId'])
+          && (request.resource.data.userId is string)
+          && (request.resource.data.userId == request.auth.uid);
+
+        // Kein Update oder Delete erlaubt (Usernames sind permanent)
+        allow update, delete: if false;
+      }
+
       // Chats – Mitgliedschaft per members{uid:true} ODER participants[]
       match /public/data/chats/{chatId} {
         function isMember() {
@@ -113,7 +129,11 @@ service cloud.firestore {
     && request.resource.data.media.contentType.matches('^(image/[^;]*|application/octet-stream)$'))
              ));
 
-        allow update: if false;
+        // Allow updates only for read receipts
+        allow update: if chatHasMember()
+          && (request.resource.data.keys().hasOnly(['senderId','ciphertext','nonce','version','createdAt','timestamp','read','media']))
+          && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']))
+          && (request.resource.data.read is bool);
 
         allow delete: if chatHasMember()
           && (request.auth.uid == resource.data.senderId
