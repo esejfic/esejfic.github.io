@@ -2321,6 +2321,14 @@ async function handleLinkAccountEmail() {
 // =============================================================================
 function wireUI() {
   registerButton.addEventListener('click', handleInitializeSession);
+  
+  usernameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleInitializeSession();
+    }
+  });
+  
   restoreBtnAuth.addEventListener('click', openBackupRestore);
   logoutButton.addEventListener('click', handleLogout);
   
