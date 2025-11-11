@@ -1987,15 +1987,6 @@ async function handleImageSend(event) {
   }
 }
 
-
-    rateLimiter.record();
-  } catch (err) {
-    console.error(err);
-    modal.alert(t('error'), t('imageUploadFailed'));
-  } finally {
-    hideLoading();
-  }
-
 async function handleAddNewChat() {
   try {
     if (!auth.currentUser || !currentUsername) {
