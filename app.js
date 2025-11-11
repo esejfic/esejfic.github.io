@@ -496,7 +496,7 @@ async function createOrJoinChat(myUid, partnerUid, chatId, additionalData = {}) 
 async function fetchMyChats(myUid) {
   const chatsCol = collection(db, 'artifacts', appId, 'public', 'data', 'chats');
   // unified query name and consistent ordering
-  const q = query(chatsCol, where(`members.${myUid}`, '==', true), orderBy('createdAt', 'desc'));
+  const q = query(chatsCol, where('participants', 'array-contains', myUid), orderBy('createdAt', 'desc'));
   const snap = await getDocs(q);
 
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1240,15 +1240,15 @@ const firestoreModule = {
 
   listenToChats(userId, callback) {
     const chatsRef = collection(db, `artifacts/${appId}/public/data/chats`);
-    const qy = query(chatsRef, where(`members.${userId}`, '==', true), orderBy('createdAt', 'desc'));
+    const qy = query(chatsRef, where('participants', 'array-contains', userId), orderBy('createdAt', 'desc'));
     return onSnapshot(
       qy,
       async () => {
         try {
           const chatDocs = await fetchMyChats(userId);
           const hydrated = await Promise.all(chatDocs.map(async (chat) => {
-            const members = chat.members || {};
-            const partnerId = Object.keys(members).find(id => id !== userId && members[id]);
+            // participants is an array: [userId1, userId2]
+            const partnerId = chat.participants?.find(id => id !== userId);
             if (!partnerId) return null;
 
             let partnerUsername = chat.participantUsernames?.[partnerId];
