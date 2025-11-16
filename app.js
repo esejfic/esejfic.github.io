@@ -16,7 +16,8 @@ const appId = 'secure-messenger-v2';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signInAnonymously,
-  EmailAuthProvider, linkWithCredential, sendEmailVerification
+  EmailAuthProvider, linkWithCredential, sendEmailVerification,
+  signInWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import {
   getFirestore, setDoc, getDoc, doc, collection, onSnapshot,
@@ -172,6 +173,18 @@ const translations = {
     
     createBackupNow: "Create a backup of your keys now!",
     
+    // Email Login
+    newSession: "New Session",
+    loginWithEmail: "Login with Email",
+    emailLogin: "Email Login",
+    email: "Email",
+    password: "Password",
+    login: "Login",
+    invalidCredentials: "Invalid email or password",
+    noKeysFoundRestore: "No keys found. Please restore backup.",
+    switchToNewSession: "Start new session?",
+    switchToLogin: "Already registered?",
+    
     connectionError: "Connection Error",
     couldNotConnect: "Could not establish connection.",
     criticalError: "Critical error:",
@@ -324,6 +337,18 @@ const translations = {
     compareFingerprintsText: "Vergleichen Sie diese Fingerabdrücke mit Ihrem Partner über einen sicheren Kanal (z.B. persönlich, Telefon). Wenn sie exakt übereinstimmen, ist die Verbindung sicher.",
     
     createBackupNow: "Erstellen Sie jetzt ein Backup Ihrer Schlüssel!",
+    
+    // Email Login
+    newSession: "Neue Sitzung",
+    loginWithEmail: "Mit E-Mail anmelden",
+    emailLogin: "E-Mail Login",
+    email: "E-Mail",
+    password: "Passwort",
+    login: "Anmelden",
+    invalidCredentials: "Ungültige E-Mail oder Passwort",
+    noKeysFoundRestore: "Keine Schlüssel gefunden. Bitte Backup wiederherstellen.",
+    switchToNewSession: "Neue Sitzung starten?",
+    switchToLogin: "Bereits registriert?",
     chatsLoadFailed: "Chats konnten nicht geladen werden.",
     chatCreationFailed: "Chat-Erstellung fehlgeschlagen",
     imageUploadFailed: "Bild-Upload fehlgeschlagen",
@@ -371,6 +396,15 @@ function updateAllText() {
     restoreBtnAuth.previousElementSibling.textContent = t('orRestoreBackup');
   }
   if (restoreBtnAuth) restoreBtnAuth.textContent = t('importBackup');
+  
+  // Auth view tabs and email login
+  if (tabNewSession) tabNewSession.textContent = t('newSession');
+  if (tabEmailLogin) tabEmailLogin.textContent = t('emailLogin');
+  if (emailInput) emailInput.placeholder = t('emailPlaceholder');
+  if (passwordInput) passwordInput.placeholder = t('password');
+  if (loginButton) loginButton.textContent = t('login');
+  if (switchToLogin) switchToLogin.textContent = t('switchToLogin');
+  if (switchToNewSession) switchToNewSession.textContent = t('switchToNewSession');
   
   // Sidebar
   const profileTitle = document.querySelector('#app-view h2');
@@ -428,6 +462,15 @@ const authView = document.getElementById('auth-view');
 const appView = document.getElementById('app-view');
 const usernameInput = document.getElementById('username-input');
 const registerButton = document.getElementById('register-button');
+const emailInput = document.getElementById('email-input');
+const passwordInput = document.getElementById('password-input');
+const loginButton = document.getElementById('login-button');
+const tabNewSession = document.getElementById('tab-new-session');
+const tabEmailLogin = document.getElementById('tab-email-login');
+const panelNewSession = document.getElementById('panel-new-session');
+const panelEmailLogin = document.getElementById('panel-email-login');
+const switchToLogin = document.getElementById('switch-to-login');
+const switchToNewSession = document.getElementById('switch-to-new-session');
 const currentUsernameDisplay = document.getElementById('current-username-display');
 const userIdDisplay = document.getElementById('user-id-display');
 const copyIdButton = document.getElementById('copy-id-button');
@@ -1837,6 +1880,69 @@ async function handleLogin(user) {
   }
 }
 
+async function handleEmailPasswordLogin() {
+  const email = emailInput.value.trim();
+  const password = passwordInput.value.trim();
+  
+  if (!email || !password) {
+    return modal.alert(t('invalid'), t('validEmailRequired'));
+  }
+  
+  if (!validateEmail(email)) {
+    return modal.alert(t('invalid'), t('validEmailRequired'));
+  }
+  
+  showLoading(t('connecting'));
+  
+  try {
+    // Sign in with email and password
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+    
+    // Check if user has keys stored locally
+    let privateKey = await idb.getKey(user.uid);
+    
+    if (!privateKey) {
+      // No keys found - user needs to restore from backup
+      hideLoading();
+      const shouldRestore = await modal.confirm(
+        t('loginError'),
+        t('noKeysFoundRestore')
+      );
+      
+      if (shouldRestore) {
+        await openBackupRestore();
+      } else {
+        await handleLogout();
+      }
+      return;
+    }
+    
+    // Keys found, proceed with normal login
+    await handleLogin(user);
+    
+  } catch (error) {
+    console.error("Email login failed:", error);
+    hideLoading();
+    
+    // Handle specific Firebase Auth errors
+    let errorMessage = t('invalidCredentials');
+    
+    if (error.code === 'auth/invalid-email') {
+      errorMessage = t('invalidEmail');
+    } else if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+      errorMessage = t('invalidCredentials');
+    } else if (error.code === 'auth/too-many-requests') {
+      errorMessage = t('pleaseWait');
+    }
+    
+    await modal.alert(t('loginError'), errorMessage);
+    
+    // Clear password field
+    passwordInput.value = '';
+  }
+}
+
 async function handleLogout() {
   showLoading(t('signingOut'));
   
@@ -2311,12 +2417,57 @@ async function handleLinkAccountEmail() {
 // EVENT HANDLERS
 // =============================================================================
 function wireUI() {
+  // Tab switching
+  tabNewSession.addEventListener('click', () => {
+    tabNewSession.classList.add('bg-blue-600');
+    tabNewSession.classList.remove('text-gray-400');
+    tabEmailLogin.classList.remove('bg-blue-600');
+    tabEmailLogin.classList.add('text-gray-400');
+    panelNewSession.classList.remove('hidden');
+    panelEmailLogin.classList.add('hidden');
+  });
+  
+  tabEmailLogin.addEventListener('click', () => {
+    tabEmailLogin.classList.add('bg-blue-600');
+    tabEmailLogin.classList.remove('text-gray-400');
+    tabNewSession.classList.remove('bg-blue-600');
+    tabNewSession.classList.add('text-gray-400');
+    panelEmailLogin.classList.remove('hidden');
+    panelNewSession.classList.add('hidden');
+  });
+  
+  switchToLogin.addEventListener('click', () => {
+    tabEmailLogin.click();
+  });
+  
+  switchToNewSession.addEventListener('click', () => {
+    tabNewSession.click();
+  });
+  
+  // New Session handlers
   registerButton.addEventListener('click', handleInitializeSession);
   
   usernameInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       handleInitializeSession();
+    }
+  });
+  
+  // Email Login handlers
+  loginButton.addEventListener('click', handleEmailPasswordLogin);
+  
+  emailInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      passwordInput.focus();
+    }
+  });
+  
+  passwordInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleEmailPasswordLogin();
     }
   });
   
